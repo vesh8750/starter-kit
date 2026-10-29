@@ -1,0 +1,50 @@
+# Local development stack. Not a production deployment descriptor.
+services:
+  api:
+    build:
+      context: .
+      target: runtime
+    ports: ["8000:8000"]
+    environment:
+      ENVIRONMENT: local
+      DEBUG: "true"
+      LOG_RENDERER: console
+      SECRET_KEY: dev-only-insecure-secret-key-change-me-0123456789
+      DATABASE_URL: postgresql+asyncpg://app:app@db:5432/app
+      CACHE_BACKEND: redis
+      REDIS_URL: redis://cache:6379/0
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    depends_on:
+      db: {condition: service_healthy}
+      cache: {condition: service_healthy}
+    # Migrations run once, before the API starts, rather than inside the image's CMD.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  cache:
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
